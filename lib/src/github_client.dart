@@ -14,24 +14,24 @@ class GitHubClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  Future<List<dynamic>> getAllTags(String repo) async {
-    final tags = <dynamic>[];
+  Stream<Map<String, dynamic>> getAllTags(String repo) async* {
     var page = 1;
     while (true) {
       final response = await _get('/repos/$repo/tags?per_page=100&page=$page');
-      final list = jsonDecode(response.body) as List;
+      final list = jsonDecode(response.body) as List<dynamic>;
       if (list.isEmpty) break;
-      tags.addAll(list);
+      for (final tag in list) {
+        yield tag as Map<String, dynamic>;
+      }
       page++;
       // Safety break for very large repos if needed, but Flutter has ~100s of
       // tags, should be fine.
       // Actually Flutter has thousands. This might take a while.
       // 3000 tags / 100 = 30 requests. Acceptable.
     }
-    return tags;
   }
 
-  Future<List<dynamic>> getCommits(
+  Future<List<Map<String, dynamic>>> getCommits(
     String repo, {
     String? path,
     int page = 1,
@@ -39,7 +39,7 @@ class GitHubClient {
     var url = '/repos/$repo/commits?page=$page&per_page=30';
     if (path != null) url += '&path=$path';
     final response = await _get(url);
-    return jsonDecode(response.body) as List;
+    return jsonDecode(response.body) as List<Map<String, dynamic>>;
   }
 
   Future<String> getFileContent(String repo, String path, String ref) async {
@@ -113,9 +113,9 @@ class GitHubClient {
 }
 
 class GitHubHttpException implements Exception {
+  GitHubHttpException(this.statusCode, this.body);
   final int statusCode;
   final String body;
-  GitHubHttpException(this.statusCode, this.body);
   @override
   String toString() => 'HTTP $statusCode: $body';
 }

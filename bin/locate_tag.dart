@@ -72,8 +72,7 @@ void main(List<String> arguments) async {
           );
           if (commits.isEmpty) break; // No more commits or end of history
 
-          for (var commitItem in commits) {
-            final commitMap = commitItem as Map<String, dynamic>;
+          for (var commitMap in commits) {
             final cSha = commitMap['sha'] as String;
 
             try {
@@ -169,14 +168,12 @@ void main(List<String> arguments) async {
 
     // 2. Fetch all tags
     print('Fetching tags...');
-    final tags = await client.getAllTags(_flutterRepo);
-    print('Found ${tags.length} tags.');
 
     // 3. Filter and Sort tags
     final validTags = <Version, String>{};
-    for (var tag in tags) {
+    await for (var tag in client.getAllTags(_flutterRepo)) {
       try {
-        final tagMap = tag as Map<String, dynamic>;
+        final tagMap = tag;
         var name = tagMap['name'] as String;
         if (name.startsWith('v')) name = name.substring(1);
         final version = Version.parse(name);
@@ -274,10 +271,6 @@ void main(List<String> arguments) async {
     }
 
     print('\nNo tag found containing commit $sha');
-  } catch (e) {
-    print('Error: $e');
-    exitCode = ExitCode.software;
-    return;
   } finally {
     client.close();
   }
