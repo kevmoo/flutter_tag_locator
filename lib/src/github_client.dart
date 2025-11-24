@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'commit_object.dart';
+
 class GitHubClient {
   static const _baseUrl = 'https://api.github.com';
   final String? token;
@@ -9,9 +11,11 @@ class GitHubClient {
 
   GitHubClient(this.token);
 
-  Future<Map<String, dynamic>> getCommit(String repo, String sha) async {
+  Future<CommitObject> getCommit(String repo, String sha) async {
     final response = await _get('/repos/$repo/commits/$sha');
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    return CommitObject.extract(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   Stream<Map<String, dynamic>> getAllTags(String repo) async* {
@@ -31,7 +35,7 @@ class GitHubClient {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getCommits(
+  Future<List<CommitObject>> getCommits(
     String repo, {
     String? path,
     int page = 1,
@@ -39,7 +43,9 @@ class GitHubClient {
     var url = '/repos/$repo/commits?page=$page&per_page=30';
     if (path != null) url += '&path=$path';
     final response = await _get(url);
-    return jsonDecode(response.body) as List<Map<String, dynamic>>;
+    return (jsonDecode(response.body) as List<dynamic>)
+        .map((e) => CommitObject.extract(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<String> getFileContent(String repo, String path, String ref) async {
@@ -54,11 +60,6 @@ class GitHubClient {
     final content = data['content'] as String;
     // content is base64 encoded, with newlines
     return utf8.decode(base64.decode(content.replaceAll('\n', '')));
-  }
-
-  Future<Map<String, dynamic>> searchCode(String query) async {
-    final response = await _get('/search/code?q=$query');
-    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   Future<bool> isAncestor(

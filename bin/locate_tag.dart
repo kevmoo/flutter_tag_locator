@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:args/args.dart';
-import 'package:flutter_tag_locator/src/commit_object.dart';
 import 'package:flutter_tag_locator/src/exit_code.dart';
 import 'package:flutter_tag_locator/src/github_client.dart';
 import 'package:pub_semver/pub_semver.dart';
@@ -40,9 +39,7 @@ void main(List<String> arguments) async {
 
     try {
       final commit = await client.getCommit(_flutterRepo, sha);
-      commitDate = CommitObject(
-        commit['commit'] as Map<String, dynamic>,
-      ).committerDate;
+      commitDate = commit.committerDate;
       print('Found Framework commit: $sha date: $commitDate');
       gotoNextStep = true; // Successfully found a framework commit
     } catch (e) {
@@ -73,7 +70,7 @@ void main(List<String> arguments) async {
           if (commits.isEmpty) break; // No more commits or end of history
 
           for (var commitMap in commits) {
-            final cSha = commitMap['sha'] as String;
+            final cSha = commitMap.sha;
 
             try {
               final content = await client.getFileContent(
@@ -86,9 +83,7 @@ void main(List<String> arguments) async {
                 // Since we're iterating new-to-old, this is a candidate for the
                 // earliest.
                 earliestMatchingFrameworkCommitSha = cSha;
-                earliestMatchingCommitDate = CommitObject(
-                  commitMap['commit'] as Map<String, dynamic>,
-                ).committerDate;
+                earliestMatchingCommitDate = commitMap.committerDate;
                 // Continue iterating to find an even older one (if any in this
                 // page or next)
               } else {
@@ -208,9 +203,7 @@ void main(List<String> arguments) async {
 
       try {
         final midCommit = await client.getCommit(_flutterRepo, midSha);
-        final midDate = CommitObject(
-          midCommit['commit'] as Map<String, dynamic>,
-        ).committerDate;
+        final midDate = midCommit.committerDate;
 
         if (midDate.isBefore(commitDate)) {
           // This tag is older than our commit. The target tag must be after
