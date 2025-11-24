@@ -1,8 +1,15 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
 import 'commit_object.dart';
+
+final _decoder = const Utf8Decoder().fuse(const JsonDecoder());
+
+Object? _decodeBytes(Uint8List bytes) {
+  return _decoder.convert(bytes);
+}
 
 class GitHubClient {
   static const _baseUrl = 'https://api.github.com';
@@ -13,16 +20,14 @@ class GitHubClient {
 
   Future<CommitObject> getCommit(String repo, String sha) async {
     final response = await _get('/repos/$repo/commits/$sha');
-    return CommitObject.extract(
-      jsonDecode(response.body) as Map<String, dynamic>,
-    );
+    return CommitObject.extract(_decodeBytes(response) as Map<String, dynamic>);
   }
 
   Stream<Map<String, dynamic>> getAllTags(String repo) async* {
     var page = 1;
     while (true) {
       final response = await _get('/repos/$repo/tags?per_page=100&page=$page');
-      final list = jsonDecode(response.body) as List<dynamic>;
+      final list = _decodeBytes(response) as List<dynamic>;
       if (list.isEmpty) break;
       for (final tag in list) {
         yield tag as Map<String, dynamic>;
@@ -33,33 +38,6 @@ class GitHubClient {
       // Actually Flutter has thousands. This might take a while.
       // 3000 tags / 100 = 30 requests. Acceptable.
     }
-  }
-
-  Future<List<CommitObject>> getCommits(
-    String repo, {
-    String? path,
-    int page = 1,
-  }) async {
-    var url = '/repos/$repo/commits?page=$page&per_page=30';
-    if (path != null) url += '&path=$path';
-    final response = await _get(url);
-    return (jsonDecode(response.body) as List<dynamic>)
-        .map((e) => CommitObject.extract(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<String> getFileContent(String repo, String path, String ref) async {
-    // Use raw content API
-    // https://raw.githubusercontent.com/:owner/:repo/:ref/:path
-    // Or API: /repos/:owner/:repo/contents/:path?ref=:ref
-    // API returns base64.
-    // Raw is easier but might need different client handling?
-    // Let's use API to stay consistent with token usage.
-    final response = await _get('/repos/$repo/contents/$path?ref=$ref');
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final content = data['content'] as String;
-    // content is base64 encoded, with newlines
-    return utf8.decode(base64.decode(content.replaceAll('\n', '')));
   }
 
   Future<bool> isAncestor(
@@ -73,7 +51,7 @@ class GitHubClient {
     final response = await _get(
       '/repos/$repo/compare/$ancestorSha...$descendantSha',
     );
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = _decodeBytes(response) as Map<String, dynamic>;
 
     // status can be: ahead, behind, identical, diverged
     // If ancestor is truly an ancestor of descendant, status should be 'ahead'
@@ -83,7 +61,7 @@ class GitHubClient {
     return status == 'ahead' || status == 'identical';
   }
 
-  Future<http.Response> _get(String path) async {
+  Future<Uint8List> _get(String path) async {
     final uri = Uri.parse('$_baseUrl$path');
     final headers = <String, String>{
       'Accept': 'application/vnd.github.v3+json',
@@ -105,7 +83,7 @@ class GitHubClient {
       throw GitHubHttpException(response.statusCode, response.body);
     }
 
-    return response;
+    return response.bodyBytes;
   }
 
   void close() {
