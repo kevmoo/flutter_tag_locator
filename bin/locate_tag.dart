@@ -30,13 +30,13 @@ void main(List<String> arguments) async {
   final client = GitHubClient(token);
 
   try {
-    print('Analyzing commit $sha...');
+    print('Analyzing ENGINE commit $sha');
 
     // 1. Determine if it's a Framework or Engine commit
     var frameworkCommitSha = sha;
     final commit = await client.getCommit(_flutterRepo, sha);
     final commitDate = commit.committerDate;
-    print('Found Framework commit: $sha date: $commitDate');
+    print('Found Framework commit: $sha\n\tdate: $commitDate');
     // Successfully found a framework commit
 
     // 2. Fetch all tags
@@ -127,6 +127,8 @@ void main(List<String> arguments) async {
           print(
             'Release URL: https://github.com/$_flutterRepo/releases/tag/${version.toString()}',
           );
+
+          print('\n\n$sha, $version, $tagSha, $commitDate');
           exitCode = 0;
           return;
         }
@@ -141,7 +143,7 @@ void main(List<String> arguments) async {
       }
     }
 
-    print('\nNo tag found containing commit $sha');
+    print('\nNo tag found containing FRAMEWORK commit $sha');
   } finally {
     client.close();
   }
