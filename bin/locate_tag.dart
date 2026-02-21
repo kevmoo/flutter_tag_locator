@@ -1,12 +1,9 @@
 import 'dart:io';
 
 import 'package:args/args.dart';
-import 'package:flutter_tag_locator/src/commit_object.dart';
 import 'package:flutter_tag_locator/src/exit_code.dart';
-import 'package:flutter_tag_locator/src/github_client.dart';
+import 'package:github/github.dart';
 import 'package:pub_semver/pub_semver.dart';
-
-const _flutterRepo = 'flutter/flutter';
 
 void main(List<String> arguments) async {
   final parser = ArgParser()
@@ -27,15 +24,27 @@ void main(List<String> arguments) async {
     return;
   }
 
-  final client = GitHubClient(token);
+  final github = GitHub(
+    auth: token != null
+        ? Authentication.withToken(token)
+        : const Authentication.anonymous(),
+  );
+  final slug = RepositorySlug('flutter', 'flutter');
 
   try {
     print('Analyzing ENGINE commit $sha');
 
     // 1. Determine if it's a Framework or Engine commit
     var frameworkCommitSha = sha;
-    final commit = await client.getCommit(_flutterRepo, sha);
-    final commitDate = commit.committerDate;
+    RepositoryCommit commit;
+    try {
+      commit = await github.repositories.getCommit(slug, sha);
+    } catch (e) {
+      print('Error: Could not find commit $sha in $slug');
+      exitCode = ExitCode.tempFail;
+      return;
+    }
+    final commitDate = commit.commit!.committer!.date!;
     print('\tFound ENGINE commit date: $commitDate');
     // Successfully found a framework commit
 
@@ -44,12 +53,12 @@ void main(List<String> arguments) async {
 
     // 3. Filter and Sort tags
     final validTags = <Version, String>{};
-    await for (var tag in client.getAllTags(_flutterRepo)) {
-      var name = tag['name'] as String;
+    await for (var tag in github.repositories.listTags(slug)) {
+      var name = tag.name;
       if (name.startsWith('v')) name = name.substring(1);
       try {
         final version = Version.parse(name);
-        validTags[version] = CommitObject.extract(tag).sha;
+        validTags[version] = tag.commit.sha!;
       } on FormatException {
         // Ignore invalid version tags
       }
@@ -80,8 +89,8 @@ void main(List<String> arguments) async {
       final midSha = validTags[midVersion]!;
 
       try {
-        final midCommit = await client.getCommit(_flutterRepo, midSha);
-        final midDate = midCommit.committerDate;
+        final midCommit = await github.repositories.getCommit(slug, midSha);
+        final midDate = midCommit.commit!.committer!.date!;
 
         if (midDate.isBefore(commitDate)) {
           // This tag is older than our commit. The target tag must be after
@@ -115,17 +124,19 @@ void main(List<String> arguments) async {
 
       // Check if frameworkCommitSha is an ancestor of tagSha
       try {
-        final isAncestor = await client.isAncestor(
-          _flutterRepo,
+        final comparison = await github.repositories.compareCommits(
+          slug,
           frameworkCommitSha,
           tagSha,
         );
+        final isAncestor =
+            comparison.status == 'ahead' || comparison.status == 'identical';
 
         if (isAncestor) {
           print('\nFound oldest tag: $version');
           print('Tag Commit: $tagSha');
           print(
-            'Release URL: https://github.com/$_flutterRepo/releases/tag/${version.toString()}',
+            'Release URL: https://github.com/${slug.fullName}/releases/tag/${version.toString()}',
           );
 
           final dateStr = commitDate.toIso8601String().substring(0, 10);
@@ -146,6 +157,6 @@ void main(List<String> arguments) async {
 
     print('\nNo tag found containing FRAMEWORK commit $sha');
   } finally {
-    client.close();
+    github.dispose();
   }
 }
