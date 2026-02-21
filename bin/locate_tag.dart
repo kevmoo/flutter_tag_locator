@@ -36,7 +36,7 @@ void main(List<String> arguments) async {
     var frameworkCommitSha = sha;
     final commit = await client.getCommit(_flutterRepo, sha);
     final commitDate = commit.committerDate;
-    print('Found Framework commit: $sha\n\tdate: $commitDate');
+    print('\tFound ENGINE commit date: $commitDate');
     // Successfully found a framework commit
 
     // 2. Fetch all tags
@@ -128,7 +128,8 @@ void main(List<String> arguments) async {
             'Release URL: https://github.com/$_flutterRepo/releases/tag/${version.toString()}',
           );
 
-          print('\n\n$sha, $version, $tagSha, $commitDate');
+          final dateStr = commitDate.toIso8601String().substring(0, 10);
+          print('\n\n$sha, $version, $tagSha, $dateStr');
           exitCode = 0;
           return;
         }
