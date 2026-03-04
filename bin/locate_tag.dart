@@ -155,7 +155,7 @@ void main(List<String> arguments) async {
       }
     }
 
-    print('\nNo tag found containing FRAMEWORK commit $sha');
+    print('\nNo tag found containing ENGINE commit $sha');
   } finally {
     github.dispose();
   }
