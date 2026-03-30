@@ -46,6 +46,7 @@ void main(List<String> arguments) async {
     }
     final commitDate = commit.commit!.committer!.date!;
     print('\tFound ENGINE commit date: $commitDate');
+    print('\thttps://github.com/${slug.fullName}/commit/$sha');
     // Successfully found a framework commit
 
     // 2. Fetch all tags
