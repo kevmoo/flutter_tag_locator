@@ -67,58 +67,21 @@ void main(List<String> arguments) async {
     final sortedVersions = validTags.keys.toList()..sort();
     print('Sorted ${sortedVersions.length} versions.');
 
-    // Optimization: Filter out tags that are definitely too old based on date.
-    // We can't check every tag's date (too many requests).
-    // But we can binary search or sample to find a lower bound.
-    // Assumption: Version numbers roughly correlate with time.
-    // We want to find the first version where date >= commitDate.
-    // Note: This is not strictly monotonic for patch releases, but good for
-    // finding the "oldest" tag which is usually a pre-release or stable on the
-    // main line.
+    // Optimization: Since it's almost certainly a very recent commit,
+    // we can search BACKWARDS from the newest tags. The first time we hit
+    // tags that don't contain the commit (after finding ones that do),
+    // we have found the oldest tag! This avoids both complex binary search
+    // bounds and excessive forward-scanning API calls.
 
-    var startIndex = 0;
-    var endIndex = sortedVersions.length - 1;
-    var lowerBound = 0;
+    print('Searching backwards from the newest tags...');
 
-    print('Narrowing down search range...');
+    Version? oldestTag;
+    String? oldestTagSha;
+    var consecutiveMisses = 0;
+    final maxTagsToCheck = 50;
+    final startIndex = sortedVersions.length - 1;
 
-    // Check middle.
-    while (startIndex <= endIndex) {
-      final mid = (startIndex + endIndex) ~/ 2;
-      final midVersion = sortedVersions[mid];
-      final midSha = validTags[midVersion]!;
-
-      try {
-        final midCommit = await github.repositories.getCommit(slug, midSha);
-        final midDate = midCommit.commit!.committer!.date!;
-
-        if (midDate.isBefore(commitDate)) {
-          // This tag is older than our commit. The target tag must be after
-          // this.
-          // Store this as a possible lower bound (plus one)
-          lowerBound = mid + 1;
-          startIndex = mid + 1;
-        } else {
-          // This tag is newer (or same). The target could be this or earlier.
-          endIndex = mid - 1;
-        }
-      } catch (e) {
-        // If we hit rate limit here, we are in trouble.
-        print('Warning: Could not fetch date for $midVersion: $e');
-        break;
-      }
-    }
-
-    // Safety buffer: back up a bit in case of out-of-order releases
-    // (cherry-picks)
-    lowerBound = (lowerBound - 10).clamp(0, sortedVersions.length - 1);
-
-    print(
-      'Starting search from version '
-      '${sortedVersions[lowerBound]} (Index $lowerBound)',
-    );
-
-    for (var i = lowerBound; i < sortedVersions.length; i++) {
+    for (var i = startIndex; i >= 0 && i >= startIndex - maxTagsToCheck; i--) {
       final version = sortedVersions[i];
       final tagSha = validTags[version]!;
 
@@ -133,18 +96,26 @@ void main(List<String> arguments) async {
             comparison.status == 'ahead' || comparison.status == 'identical';
 
         if (isAncestor) {
-          print('\nFound oldest tag: $version');
-          print('Tag Commit: $tagSha');
-          print(
-            'Release URL: https://github.com/${slug.fullName}/releases/tag/${version.toString()}',
-          );
+          oldestTag = version;
+          oldestTagSha = tagSha;
+          consecutiveMisses = 0; // reset
+          stdout.write('T');
+        } else {
+          consecutiveMisses++;
+          stdout.write('.');
 
-          final dateStr = commitDate.toIso8601String().substring(0, 10);
-          print('\n\n$sha, $version, $tagSha, $dateStr');
-          exitCode = 0;
-          return;
+          // Once we've found tags that contain the commit, and then hit
+          // a string of tags that don't (tolerate a few for cherry-picks),
+          // we've crossed the boundary and found our oldest tag.
+          if (oldestTag != null && consecutiveMisses >= 4) {
+            break;
+          }
+          // If we haven't found any tags that contain it after a while,
+          // give up.
+          if (oldestTag == null && consecutiveMisses >= 20) {
+            break;
+          }
         }
-        stdout.write('.');
       } catch (e) {
         if (e.toString().contains('Rate Limit')) {
           print('\nRate limit hit. Try providing a GitHub token with --token.');
@@ -153,6 +124,20 @@ void main(List<String> arguments) async {
         }
         stdout.write('x');
       }
+    }
+
+    if (oldestTag != null) {
+      print('\nFound oldest tag: $oldestTag');
+      print('Tag Commit: $oldestTagSha');
+      print(
+        'Release URL: '
+        'https://github.com/${slug.fullName}/releases/tag/${oldestTag.toString()}',
+      );
+
+      final dateStr = commitDate.toIso8601String().substring(0, 10);
+      print('\n\n$sha, $oldestTag, $oldestTagSha, $dateStr');
+      exitCode = 0;
+      return;
     }
 
     print('\nNo tag found containing ENGINE commit $sha');
